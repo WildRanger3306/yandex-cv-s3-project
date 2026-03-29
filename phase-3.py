@@ -53,7 +53,7 @@ prompts = [
 
 model_id = "runwayml/stable-diffusion-v1-5"
 # Попробуем сгенерировать результаты для промежуточного и финального чекпоинтов
-checkpoints = ["cheburashka_lora_checkpoint_1000", "cheburashka_lora_final"]
+checkpoints = ["cheburashka_lora_checkpoint_500", "cheburashka_lora_final"]
 
 print("=== ЭТАП 3: Демонстрация результатов ===")
 

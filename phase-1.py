@@ -35,27 +35,31 @@ def load_dataset_2(data_dir="dataset-2"):
     return sorted(paths)
 
 def visualize_dataset(image_paths):
-    display_paths = image_paths[:15]
-    if not display_paths:
+    if not image_paths:
         return
         
-    # Сетка: 3 строки на 5 колонок
-    fig, axes = plt.subplots(3, 5, figsize=(20, 12))
+    num_images = len(image_paths)
+    cols = 5
+    rows = (num_images + cols - 1) // cols
+    
+    # Высота подстраивается под количество строк (~4 дюйма на строку)
+    fig_height = max(4 * rows, 4)
+    fig, axes = plt.subplots(rows, cols, figsize=(20, fig_height))
     axes = axes.flatten() # Делаем одномерным для прохода в цикле
         
-    for idx, path in enumerate(display_paths):
+    for idx, path in enumerate(image_paths):
         img = Image.open(path).convert("RGB")
         axes[idx].imshow(img)
         axes[idx].axis("off")
         axes[idx].set_title(os.path.basename(path)[:20]) # обрезаем слишком длинные имена
         
-    # Скрываем пустые слоты (на случай если картинок < 15)
-    for idx in range(len(display_paths), len(axes)):
+    # Скрываем пустые слоты
+    for idx in range(num_images, len(axes)):
         axes[idx].axis("off")
         
     plt.tight_layout()
     plt.savefig("dataset_visualization.png")
-    print(f"Визуализация (сетка 3x5, {len(display_paths)} картинок) сохранена в 'dataset_visualization.png'\n")
+    print(f"Визуализация (сетка {rows}x{cols}, {num_images} картинок) сохранена в 'dataset_visualization.png'\n")
 
 # 1. Работа с данными
 print("=== ЭТАП 1: Работа с данными ===")
