@@ -91,7 +91,7 @@ optimizer = torch.optim.AdamW(
 )
 
 lr_scheduler = get_scheduler(
-    "cosine_with_warmup",
+    "cosine",
     optimizer=optimizer,
     num_warmup_steps=100,
     num_training_steps=max_train_steps,
@@ -115,7 +115,7 @@ mlflow.log_params({
     "max_train_steps": max_train_steps,
     "lora_rank": lora_rank,
     "batch_size": train_batch_size,
-    "lr_scheduler": "cosine_with_warmup",
+    "lr_scheduler": "cosine",
     "snr_gamma": 5.0
 })
 
