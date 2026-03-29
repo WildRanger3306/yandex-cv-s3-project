@@ -79,7 +79,7 @@ for ckpt in checkpoints:
     # Это добавит в архитектуру UNet нужные слои, чтобы она в точности 
     # совпала с тем 1.8-гигабайтным "мутантом", который мы сохранили.
     lora_config = LoraConfig(
-        r=128,
+        r=16, # ДОЛЖЕН СОВПАДАТЬ С ПАРАМЕТРОМ r=16 ПРИ ОБУЧЕНИИ!
         init_lora_weights="gaussian",
         target_modules=["to_k", "to_q", "to_v", "to_out.0"]
     )
