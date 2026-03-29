@@ -238,8 +238,8 @@ while global_step < max_train_steps:
             mlflow.log_metric("loss", display_loss, step=global_step)
             mlflow.log_metric("lr", current_lr, step=global_step)
             
-            # Сохраняем промежуточные чекпоинты (каждые 200 шагов ОБНОВЛЕНИЯ весов)
-            if global_step % 200 == 0:
+            # Сохраняем промежуточные чекпоинты (каждые 500 шагов ОБНОВЛЕНИЯ весов)
+            if global_step % 500 == 0:
                 checkpoint_path = f"cheburashka_lora_checkpoint_{global_step}"
                 os.makedirs(checkpoint_path, exist_ok=True)
                 lora_state_dict = {k: v.cpu() for k, v in unet.state_dict().items() if "lora" in k}
