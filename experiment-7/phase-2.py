@@ -151,7 +151,9 @@ lora_config = LoraConfig(
     lora_alpha=8,
     lora_dropout=0.1,
     init_lora_weights="gaussian",
-    target_modules=["to_k", "to_v"]
+    # Captioning позволяет безопасно использовать все 4 модуля:
+    # модель сама учится разграничивать персонажа и фон через текст
+    target_modules=["to_k", "to_q", "to_v", "to_out.0"]
 )
 
 unet.add_adapter(lora_config)
@@ -209,7 +211,7 @@ mlflow.log_params({
     "lr_scheduler": "cosine",
     "snr_gamma": 5.0,
     "weight_decay": weight_decay,
-    "target_modules": "to_k, to_v",
+    "target_modules": "to_k, to_q, to_v, to_out.0",
 })
 
 # ================================
