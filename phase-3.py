@@ -13,6 +13,9 @@ def generate_and_plot(pipe, prompts, checkpoint_name):
     print(f"Генерация для: {checkpoint_name}...")
     fig, axes = plt.subplots(1, len(prompts), figsize=(20, 5))
     
+    out_dir = "results_local"
+    os.makedirs(out_dir, exist_ok=True)
+    
     for i, prompt in enumerate(prompts):
         print(f" -> Промпт {i+1}: '{prompt}'")
         # Генерируем картинку. guidance_scale=7.5 — стандарт для Stable Diffusion
@@ -23,12 +26,16 @@ def generate_and_plot(pipe, prompts, checkpoint_name):
         axes[i].set_title(prompt, fontsize=9, wrap=True)
         axes[i].axis("off")
         
-        # Дополнительно сохраним каждую картинку отдельно
+        # Дополнительно сохраним каждую картинку отдельно локально
         safe_prompt = prompt.replace(" ", "_").replace("<", "").replace(">", "").replace(":", "")
-        image.save(f"{checkpoint_name}_{safe_prompt[:25]}.png")
+        local_img_path = os.path.join(out_dir, f"{checkpoint_name}_{safe_prompt[:25]}.png")
+        image.save(local_img_path)
+        
+        # Логируем заодно и индивидуальные картинки в MLflow
+        mlflow.log_artifact(local_img_path)
         
     plt.tight_layout()
-    out_file = f"GRID_{checkpoint_name}.png"
+    out_file = os.path.join(out_dir, f"GRID_{checkpoint_name}.png")
     plt.savefig(out_file)
     print(f"[*] Склейка сохранена в файл: {out_file}\n")
     plt.close()
@@ -51,7 +58,7 @@ checkpoints = ["cheburashka_lora_checkpoint_1000", "cheburashka_lora_final"]
 print("=== ЭТАП 3: Демонстрация результатов ===")
 
 # Подключаемся к MLflow
-os.environ["NO_PROXY"] = "188.243.201.66,127.0.0.1,localhost"
+#os.environ["NO_PROXY"] = "188.243.201.66,127.0.0.1,localhost"
 mlflow.set_tracking_uri("http://188.243.201.66:5000")
 mlflow.set_experiment("cheburashka-lora-inference")
 mlflow.start_run()
@@ -78,13 +85,14 @@ for ckpt in checkpoints:
     )
     unet.add_adapter(lora_config)
     
-    # 3. Напрямую загружаем веса в эту "подготовленную" архитектуру из сохраненного safetensors файла
-    safetensors_path = os.path.join(ckpt, "lora_weights.pt")
-    if os.path.exists(safetensors_path):
-        state_dict = load_file(safetensors_path)
+    # 3. Напрямую загружаем веса в эту "подготовленную" архитектуру
+    weights_path = os.path.join(ckpt, "lora_weights.pt")
+    if os.path.exists(weights_path):
+        state_dict = torch.load(weights_path, weights_only=True)
+        # Оставляем strict=False, так как стейт содержит только ключи lora_
         unet.load_state_dict(state_dict, strict=False)
     else:
-        print(f"Файл вексов не найден по пути: {safetensors_path}")
+        print(f"Файл весов не найден по пути: {weights_path}")
         continue
     
     # 4. Подключаем готовый кастомный UNet к пайплайну
