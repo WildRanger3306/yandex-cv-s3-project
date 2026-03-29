@@ -208,3 +208,4 @@ __marimo__/
 *.md
 /cheburashka_lora*
 cheburashka_embeds.pt
+lora_weights.pt
