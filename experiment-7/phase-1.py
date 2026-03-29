@@ -26,7 +26,7 @@ def download_dataset():
         image_paths.append(path)
     return image_paths
 
-def load_dataset_2(data_dir="dataset-2"):
+def load_dataset_2(data_dir="../dataset-2"):
     """Загрузка путей к картинкам из локальной папки dataset-2"""
     if not os.path.exists(data_dir):
         os.makedirs(data_dir, exist_ok=True)
