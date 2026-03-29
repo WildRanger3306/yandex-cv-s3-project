@@ -113,7 +113,7 @@ progress_bar = tqdm(total=max_train_steps, desc="Обучение")
 # ================================
 # os.environ["NO_PROXY"] = "188.243.201.66,127.0.0.1,localhost"
 mlflow.set_tracking_uri("http://188.243.201.66:5000")
-mlflow.set_experiment("cheburashka-lora-training-e5")
+mlflow.set_experiment("cheburashka-lora-training")
 mlflow.start_run()
 mlflow.log_params({
     "learning_rate": learning_rate,
