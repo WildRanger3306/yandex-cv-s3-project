@@ -7,25 +7,6 @@ import matplotlib.pyplot as plt
 from torch.utils.data import Dataset
 from diffusers import StableDiffusionPipeline
 
-def download_dataset():
-    """Скачивание датасета с чебурашкой"""
-    os.makedirs("dataset", exist_ok=True)
-    urls = [
-        "https://code.s3.yandex.net/deep-learning/cheburashka_1.png?etag=c5d0692223b9a83575ef4ccee9679c54",
-        "https://code.s3.yandex.net/deep-learning/cheburashka_2.png?etag=dc3c5bb94cd1571c0ce7cc5a540500ab",
-        "https://code.s3.yandex.net/deep-learning/cheburashka_3.png?etag=3bd86d39bacaf6d71daa580b676212fa"
-    ]
-    image_paths = []
-    for i, url in enumerate(urls):
-        path = f"dataset/cheburashka_{i+1}.png"
-        if not os.path.exists(path):
-            print(f"Скачивание {path}...")
-            resp = requests.get(url)
-            with open(path, "wb") as f:
-                f.write(resp.content)
-        image_paths.append(path)
-    return image_paths
-
 def load_dataset_2(data_dir="../dataset-2"):
     """Загрузка путей к картинкам из локальной папки dataset-2"""
     if not os.path.exists(data_dir):
@@ -64,9 +45,6 @@ def visualize_dataset(image_paths):
 # 1. Работа с данными
 print("=== ЭТАП 1: Работа с данными ===")
 image_paths = load_dataset_2()
-# if not image_paths:
-#     print("Папка dataset_2 пуста, качаем дефолтный датасет...")
-#     image_paths = download_dataset()
 visualize_dataset(image_paths)
 
 # Реализация класса датасета
