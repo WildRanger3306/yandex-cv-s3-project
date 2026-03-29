@@ -46,7 +46,7 @@ prompts = [
 
 model_id = "runwayml/stable-diffusion-v1-5"
 # Попробуем сгенерировать результаты для промежуточного и финального чекпоинтов
-checkpoints = ["cheburashka_lora_checkpoint_500", "cheburashka_lora_final"]
+checkpoints = ["cheburashka_lora_checkpoint_1000", "cheburashka_lora_final"]
 
 print("=== ЭТАП 3: Демонстрация результатов ===")
 
@@ -79,7 +79,7 @@ for ckpt in checkpoints:
     unet.add_adapter(lora_config)
     
     # 3. Напрямую загружаем веса в эту "подготовленную" архитектуру из сохраненного safetensors файла
-    safetensors_path = os.path.join(ckpt, "diffusion_pytorch_model.safetensors")
+    safetensors_path = os.path.join(ckpt, "lora_weights.pt")
     if os.path.exists(safetensors_path):
         state_dict = load_file(safetensors_path)
         unet.load_state_dict(state_dict, strict=False)
