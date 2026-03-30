@@ -60,11 +60,11 @@ def run_hires_generation(pipe_txt2img, pipe_img2img, prompt, neg_prompt):
         # 2. Мягкая доработка деталей ( лицо/рот )
         upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
         refined = pipe_img2img(
-            prompt=prompt + ", detailed face, visible mouth",
+            prompt=prompt,
             negative_prompt=neg_prompt,
             image=upscaled,
-            strength=0.35, # Достаточно мало, чтобы НЕ менять образ
-            guidance_scale=8.0,
+            strength=0.22, # Снижаем до ювелирного уровня
+            guidance_scale=12.0, # Усиливаем влияние LoRA
             num_inference_steps=20
         ).images[0]
         
