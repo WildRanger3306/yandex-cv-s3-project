@@ -150,19 +150,29 @@ for ckpt in checkpoints:
     # Овердрайв 1.5 для моментального проявления Чебурашки
     cross_attention_kwargs = {"scale": 1.5}
     
-    print(f"Генерация (PURE LORA) для: {ckpt}...")
+    print(f"Генерация (LORA + REFINER) для: {ckpt}...")
     fig, axes = plt.subplots(1, len(prompts), figsize=(20, 5))
-    out_dir = "results_pure_lora"
+    out_dir = "results_lora_refiner"
     os.makedirs(out_dir, exist_ok=True)
     
     for i, prompt in enumerate(prompts):
         print(f" -> Промпт {i+1}: '{prompt}'")
         
         with torch.autocast("cuda"):
-            # ТОЛЬКО TXT2IMG проход без дорисовок
-            image = pipe(
+            # 1. Базовая генерация (Чебурашка)
+            base_img = pipe(
                 prompt, negative_prompt=negative_prompt,
                 num_inference_steps=30, guidance_scale=8.5,
+                cross_attention_kwargs=cross_attention_kwargs
+            ).images[0]
+            
+            # 2. Hires. Fix (Ремонт деталей лица и рта)
+            upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
+            image = pipe_img2img(
+                prompt=prompt, negative_prompt=negative_prompt,
+                image=upscaled, 
+                strength=0.22, # Мягко прорисовываем губы
+                guidance_scale=8.5,
                 cross_attention_kwargs=cross_attention_kwargs
             ).images[0]
         
@@ -184,6 +194,8 @@ for ckpt in checkpoints:
     
     # Очистка
     del pipe
+    del pipe_img2img
+    del unet
     torch.cuda.empty_cache()
 
 mlflow.end_run()
