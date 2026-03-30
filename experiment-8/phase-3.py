@@ -5,6 +5,7 @@ from peft import LoraConfig
 from safetensors.torch import load_file
 import os
 import mlflow
+from transformers import CLIPTextModel
 
 def generate_and_plot(pipe, prompts, checkpoint_name):
     """
@@ -53,7 +54,14 @@ prompts = [
 
 model_id = "runwayml/stable-diffusion-v1-5"
 # Попробуем сгенерировать результаты для промежуточного и финального чекпоинтов
-checkpoints = ["cheburashka_lora_checkpoint_500", "cheburashka_lora_final"]
+# Список чекпоинтов для проверки (Experiment-8 генерировал каждые 200)
+checkpoints = [
+    "cheburashka_lora_checkpoint_200", 
+    "cheburashka_lora_checkpoint_400", 
+    "cheburashka_lora_checkpoint_600", 
+    "cheburashka_lora_checkpoint_800", 
+    "cheburashka_lora_checkpoint_1000"
+]
 
 print("=== ЭТАП 3: Демонстрация результатов ===")
 
@@ -79,13 +87,22 @@ for ckpt in checkpoints:
     # Это добавит в архитектуру UNet нужные слои, чтобы она в точности 
     # совпала с тем 1.8-гигабайтным "мутантом", который мы сохранили.
     lora_config = LoraConfig(
-        r=16, # ДОЛЖЕН СОВПАДАТЬ С ПАРАМЕТРОМ r=16 ПРИ ОБУЧЕНИИ!
+        r=16, 
         init_lora_weights="gaussian",
         target_modules=["to_k", "to_q", "to_v", "to_out.0"]
     )
     unet.add_adapter(lora_config)
     
-    # 3. Напрямую загружаем веса в эту "подготовленную" архитектуру
+    # 3. Загружаем дообученный Text Encoder (если есть)
+    text_encoder_path = os.path.join(ckpt, "text_encoder")
+    if os.path.exists(text_encoder_path):
+        print(f" -> Загрузка кастомного Text Encoder из {text_encoder_path}")
+        text_encoder = CLIPTextModel.from_pretrained(text_encoder_path, torch_dtype=torch.float16).to("cuda")
+    else:
+        print(" -> ВНИМАНИЕ: Кастомный Text Encoder не найден, использую базовый")
+        text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder", torch_dtype=torch.float16).to("cuda")
+
+    # 4. Напрямую загружаем веса LoRA в UNet
     weights_path = os.path.join(ckpt, "lora_weights.pt")
     if os.path.exists(weights_path):
         state_dict = torch.load(weights_path, weights_only=True)
@@ -95,10 +112,11 @@ for ckpt in checkpoints:
         print(f"Файл весов не найден по пути: {weights_path}")
         continue
     
-    # 4. Подключаем готовый кастомный UNet к пайплайну
+    # 5. Собираем пайплайн
     pipe = StableDiffusionPipeline.from_pretrained(
         model_id, 
         unet=unet, 
+        text_encoder=text_encoder,
         torch_dtype=torch.float16,
         safety_checker=None
     ).to("cuda")
