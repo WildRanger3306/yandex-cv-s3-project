@@ -154,14 +154,12 @@ for ckpt in checkpoints:
     out_dir = "results_lora_refiner"
     os.makedirs(out_dir, exist_ok=True)
     
-    for i, prompt in enumerate(prompts):
-        print(f" -> Промпт {i+1}: '{prompt}'")
-        
         # Динамическая сила LoRA:
         # Для фотореализма нам нужен Чебурашка "на максималках" (1.5).
         # Но мощная LoRA выжигает стили базовой модели. 
-        # Поэтому для скетчей мы делаем LoRA "тише" (0.85), чтобы проступила текстура карандаша.
-        lora_scale = 0.85 if "sketch" in prompt.lower() else 1.5
+        # Поэтому для скетчей мы делаем LoRA "тише" (0.75), чтобы проступила текстура карандаша.
+        is_sketch = "sketch" in prompt.lower()
+        lora_scale = 0.75 if is_sketch else 1.5
         cross_attention_kwargs = {"scale": lora_scale}
         
         with torch.autocast("cuda"):
@@ -172,15 +170,19 @@ for ckpt in checkpoints:
                 cross_attention_kwargs=cross_attention_kwargs
             ).images[0]
             
-            # 2. Hires. Fix (Ремонт деталей лица и рта)
-            upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
-            image = pipe_img2img(
-                prompt=prompt, negative_prompt=negative_prompt,
-                image=upscaled, 
-                strength=0.22, # Мягко прорисовываем губы
-                guidance_scale=8.5,
-                cross_attention_kwargs=cross_attention_kwargs
-            ).images[0]
+            if is_sketch:
+                # Для скетча НЕ делаем рефайн, чтобы не "замыливать" карандашную фактуру 
+                image = base_img 
+            else:
+                # 2. Hires. Fix (Ремонт деталей лица и рта) только для фотореализма
+                upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
+                image = pipe_img2img(
+                    prompt=prompt, negative_prompt=negative_prompt,
+                    image=upscaled, 
+                    strength=0.22, # Мягко прорисовываем губы
+                    guidance_scale=8.5,
+                    cross_attention_kwargs=cross_attention_kwargs
+                ).images[0]
         
         axes[i].imshow(image)
         axes[i].set_title(prompt, fontsize=9, wrap=True)
