@@ -80,7 +80,7 @@ prompts = [
 
 model_id = "runwayml/stable-diffusion-v1-5"
 # Попробуем сгенерировать результаты для промежуточного и финального чекпоинтов
-# Список чекпоинтов для проверки (Experiment-8 генерировал каждые 200)
+# Полный список чекпоинтов для анализа динамики
 checkpoints = [
     "cheburashka_lora_checkpoint_200", 
     "cheburashka_lora_checkpoint_400", 
@@ -152,32 +152,33 @@ for ckpt in checkpoints:
     from diffusers import StableDiffusionImg2ImgPipeline
     pipe_img2img = StableDiffusionImg2ImgPipeline.from_pipe(pipe).to("cuda")
 
-    # scale=1.2 для уверенности
-    cross_attention_kwargs = {"scale": 1.2}
+    # scale=1.0 (нейтрально, чтобы не искажать образ)
+    cross_attention_kwargs = {"scale": 1.0}
     
     # Запускаем генерацию с использованием Hires Fix внутри цикла
     print(f"Генерация для: {ckpt}...")
     fig, axes = plt.subplots(1, len(prompts), figsize=(20, 5))
-    out_dir = "results_final"
+    out_dir = "results_refined_v2"
     os.makedirs(out_dir, exist_ok=True)
     
     for i, prompt in enumerate(prompts):
         print(f" -> Промпт {i+1}: '{prompt}'")
         
-        # Добавляем cross_attention_kwargs для управления силой LoRA
         with torch.autocast("cuda"):
-            # 1. База
+            # 1. База ( identity )
             base_img = pipe(
                 prompt, negative_prompt=negative_prompt,
-                num_inference_steps=30, guidance_scale=8.5,
+                num_inference_steps=30, guidance_scale=8.0,
                 cross_attention_kwargs=cross_attention_kwargs
             ).images[0]
             
-            # 2. Рефайн
+            # 2. Рефайн ( микро-доработка рта )
             upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
             image = pipe_img2img(
                 prompt=prompt, negative_prompt=negative_prompt,
-                image=upscaled, strength=0.22, guidance_scale=12.0,
+                image=upscaled, 
+                strength=0.18, # Минимум вмешательства
+                guidance_scale=8.0, # Натуральный контраст
                 cross_attention_kwargs=cross_attention_kwargs
             ).images[0]
         
