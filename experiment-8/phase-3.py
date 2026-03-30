@@ -120,28 +120,16 @@ for ckpt in checkpoints:
     )
     unet.add_adapter(lora_config)
 
-    # 3. Загружаем дообученный Text Encoder (РАЗУМ МОДЕЛИ)
-    text_encoder_path = os.path.join(ckpt, "text_encoder")
-    if os.path.exists(text_encoder_path):
-        print(f" -> Загрузка дообученного Text Encoder из {text_encoder_path}")
-        text_encoder = CLIPTextModel.from_pretrained(text_encoder_path, torch_dtype=torch.float16).to("cuda")
-    else:
-        print(" -> ВНИМАНИЕ: Дообученный Text Encoder не найден, использую базовый")
-        text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder", torch_dtype=torch.float16).to("cuda")
+    # 3. ВСЕГДА используем базовый кодировщик (для чистоты теста)
+    print(f" -> Использую БАЗОВЫЙ Text Encoder v1.5")
+    text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder", torch_dtype=torch.float16).to("cuda")
 
-    # 4. Загрузка весов LoRA напрямую в unet
+    # 4. Загрузка LoRA весов
     weights_path = os.path.join(ckpt, "lora_weights.pt")
     if os.path.exists(weights_path):
-        print(f" -> Точная загрузка весов в UNet: {weights_path}")
+        print(f" -> Загрузка весов: {weights_path}")
         state_dict = torch.load(weights_path, weights_only=True)
-        try:
-            # Сначала пробуем строгую загрузку, чтобы поймать несовпадение имен
-            unet.load_state_dict(state_dict, strict=True)
-            print(" -> [OK] Веса успешно загружены (strict=True)")
-        except Exception as e:
-            print(f" -> [!] Ошибка загрузки: {str(e)[:500]}...")
-            print(" -> Попытка мягкой загрузки (strict=False)...")
-            unet.load_state_dict(state_dict, strict=False)
+        unet.load_state_dict(state_dict, strict=False)
     else:
         print(f"Файл весов не найден: {weights_path}")
         continue
@@ -159,33 +147,22 @@ for ckpt in checkpoints:
     from diffusers import StableDiffusionImg2ImgPipeline
     pipe_img2img = StableDiffusionImg2ImgPipeline.from_pipe(pipe).to("cuda")
 
-    # scale=1.1 (чуть выше нормы для уверенного образа)
-    cross_attention_kwargs = {"scale": 1.1}
+    # Овердрайв 1.5 для моментального проявления Чебурашки
+    cross_attention_kwargs = {"scale": 1.5}
     
-    # Запускаем генерацию с использованием Hires Fix внутри цикла
-    print(f"Генерация для: {ckpt}...")
+    print(f"Генерация (PURE LORA) для: {ckpt}...")
     fig, axes = plt.subplots(1, len(prompts), figsize=(20, 5))
-    out_dir = "results_refined_v2"
+    out_dir = "results_pure_lora"
     os.makedirs(out_dir, exist_ok=True)
     
     for i, prompt in enumerate(prompts):
         print(f" -> Промпт {i+1}: '{prompt}'")
         
         with torch.autocast("cuda"):
-            # 1. База ( identity )
-            base_img = pipe(
+            # ТОЛЬКО TXT2IMG проход без дорисовок
+            image = pipe(
                 prompt, negative_prompt=negative_prompt,
-                num_inference_steps=30, guidance_scale=8.0,
-                cross_attention_kwargs=cross_attention_kwargs
-            ).images[0]
-            
-            # 2. Рефайн ( микро-доработка рта )
-            upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
-            image = pipe_img2img(
-                prompt=prompt, negative_prompt=negative_prompt,
-                image=upscaled, 
-                strength=0.18, # Минимум вмешательства
-                guidance_scale=8.0, # Натуральный контраст
+                num_inference_steps=30, guidance_scale=8.5,
                 cross_attention_kwargs=cross_attention_kwargs
             ).images[0]
         
@@ -205,11 +182,8 @@ for ckpt in checkpoints:
     plt.close()
     print(f"[!] Сетка сохранена: {grid_path}")
     
-    # Очищаем память
+    # Очистка
     del pipe
-    del pipe_img2img
-    del unet
-    del text_encoder
     torch.cuda.empty_cache()
 
 mlflow.end_run()
