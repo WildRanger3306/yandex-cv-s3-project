@@ -132,9 +132,16 @@ for ckpt in checkpoints:
     # 4. Загрузка весов LoRA напрямую в unet
     weights_path = os.path.join(ckpt, "lora_weights.pt")
     if os.path.exists(weights_path):
-        print(f" -> Ручная загрузка LoRA-весов в UNet: {weights_path}")
+        print(f" -> Точная загрузка весов в UNet: {weights_path}")
         state_dict = torch.load(weights_path, weights_only=True)
-        unet.load_state_dict(state_dict, strict=False)
+        try:
+            # Сначала пробуем строгую загрузку, чтобы поймать несовпадение имен
+            unet.load_state_dict(state_dict, strict=True)
+            print(" -> [OK] Веса успешно загружены (strict=True)")
+        except Exception as e:
+            print(f" -> [!] Ошибка загрузки: {str(e)[:500]}...")
+            print(" -> Попытка мягкой загрузки (strict=False)...")
+            unet.load_state_dict(state_dict, strict=False)
     else:
         print(f"Файл весов не найден: {weights_path}")
         continue
@@ -152,8 +159,8 @@ for ckpt in checkpoints:
     from diffusers import StableDiffusionImg2ImgPipeline
     pipe_img2img = StableDiffusionImg2ImgPipeline.from_pipe(pipe).to("cuda")
 
-    # scale=1.0 (нейтрально, чтобы не искажать образ)
-    cross_attention_kwargs = {"scale": 1.0}
+    # scale=1.1 (чуть выше нормы для уверенного образа)
+    cross_attention_kwargs = {"scale": 1.1}
     
     # Запускаем генерацию с использованием Hires Fix внутри цикла
     print(f"Генерация для: {ckpt}...")
