@@ -187,8 +187,10 @@ for ckpt in checkpoints:
     print(f"[!] Сетка сохранена: {grid_path}")
     
     # Очищаем память перед загрузкой следующего чекпоинта
-    del pipe
+    del pipe_txt2img
+    del pipe_img2img
     del unet
+    del text_encoder
     torch.cuda.empty_cache()
 
 mlflow.end_run()
