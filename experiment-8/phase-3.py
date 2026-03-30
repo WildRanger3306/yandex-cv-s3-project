@@ -41,8 +41,33 @@ def generate_and_plot(pipe, prompts, checkpoint_name):
     print(f"[*] Склейка сохранена в файл: {out_file}\n")
     plt.close()
     
-    # Отправляем готовую сетку как визуальный артефакт в MLflow
     mlflow.log_artifact(out_file)
+
+def run_hires_generation(pipe_txt2img, pipe_img2img, prompt, neg_prompt):
+    """
+    Умная генерация: база 512 + мягкая доработка 768 со strength=0.35
+    """
+    with torch.autocast("cuda"):
+        # 1. Базовая генерация ( identity )
+        base_img = pipe_txt2img(
+            prompt, 
+            negative_prompt=neg_prompt,
+            num_inference_steps=30, 
+            guidance_scale=8.0
+        ).images[0]
+        
+        # 2. Мягкая доработка деталей ( лицо/рот )
+        upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
+        refined = pipe_img2img(
+            prompt=prompt + ", detailed face, visible mouth",
+            negative_prompt=neg_prompt,
+            image=upscaled,
+            strength=0.35, # Достаточно мало, чтобы НЕ менять образ
+            guidance_scale=8.0,
+            num_inference_steps=20
+        ).images[0]
+        
+    return refined
 
 # Список промптов из задания
 prompts = [
@@ -65,10 +90,16 @@ checkpoints = [
 
 print("=== ЭТАП 3: Демонстрация результатов ===")
 
+# Негативные промпты для спасения лица
+negative_prompt = (
+    "bad anatomy, deformed face, missing mouth, blurred mouth, no mouth, "
+    "two noses, extra ears, low quality, worst quality, blur, distortion, "
+    "scary face, messy face"
+)
+
 # Подключаемся к MLflow
-#os.environ["NO_PROXY"] = "188.243.201.66,127.0.0.1,localhost"
 mlflow.set_tracking_uri("http://188.243.201.66:5000")
-mlflow.set_experiment("cheburashka-lora-inference")
+mlflow.set_experiment("cheburashka-lora-final-results")
 mlflow.start_run()
 
 for ckpt in checkpoints:
@@ -112,17 +143,47 @@ for ckpt in checkpoints:
         print(f"Файл весов не найден по пути: {weights_path}")
         continue
     
-    # 5. Собираем пайплайн
-    pipe = StableDiffusionPipeline.from_pretrained(
-        model_id, 
-        unet=unet, 
-        text_encoder=text_encoder,
-        torch_dtype=torch.float16,
+    # 5. Собираем пайплайны (Txt2Img + Img2Img для доработки)
+    pipe_txt2img = StableDiffusionPipeline.from_pretrained(
+        model_id, unet=unet, text_encoder=text_encoder, torch_dtype=torch.float16, safety_checker=None
+    ).to("cuda")
+    
+    from diffusers import StableDiffusionImg2ImgPipeline
+    pipe_img2img = StableDiffusionImg2ImgPipeline(
+        vae=pipe_txt2img.vae,
+        text_encoder=pipe_txt2img.text_encoder,
+        tokenizer=pipe_txt2img.tokenizer,
+        unet=pipe_txt2img.unet,
+        scheduler=pipe_txt2img.scheduler,
+        feature_extractor=pipe_txt2img.feature_extractor,
         safety_checker=None
     ).to("cuda")
     
-    # Запускаем генерацию
-    generate_and_plot(pipe, prompts, ckpt)
+    # Запускаем генерацию с использованием Hires Fix внутри цикла
+    print(f"Генерация для: {ckpt}...")
+    fig, axes = plt.subplots(1, len(prompts), figsize=(20, 5))
+    out_dir = "results_final"
+    os.makedirs(out_dir, exist_ok=True)
+    
+    for i, prompt in enumerate(prompts):
+        print(f" -> Промпт {i+1}: '{prompt}'")
+        image = run_hires_generation(pipe_txt2img, pipe_img2img, prompt, negative_prompt)
+        
+        axes[i].imshow(image)
+        axes[i].set_title(prompt, fontsize=9, wrap=True)
+        axes[i].axis("off")
+        
+        safe_prompt = prompt.replace(" ", "_").replace("<", "").replace(">", "").strip("_")[:20]
+        local_path = os.path.join(out_dir, f"{ckpt}_{safe_prompt}.png")
+        image.save(local_path)
+        mlflow.log_artifact(local_path)
+        
+    plt.tight_layout()
+    grid_path = os.path.join(out_dir, f"FINAL_GRID_{ckpt}.png")
+    plt.savefig(grid_path)
+    mlflow.log_artifact(grid_path)
+    plt.close()
+    print(f"[!] Сетка сохранена: {grid_path}")
     
     # Очищаем память перед загрузкой следующего чекпоинта
     del pipe
