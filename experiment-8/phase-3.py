@@ -157,32 +157,34 @@ for ckpt in checkpoints:
     for i, prompt in enumerate(prompts):
         print(f" -> Промпт {i+1}: '{prompt}'")
         
-        # Динамическая сила LoRA:
-        # Для фотореализма нам нужен Чебурашка "на максималках" (1.5).
-        # Но мощная LoRA выжигает стили базовой модели. 
-        # Поэтому для скетчей мы делаем LoRA "тише" (0.75), чтобы проступила текстура карандаша.
+        # Динамическая сила и анти-промпты для LoRA:
         is_sketch = "sketch" in prompt.lower()
         lora_scale = 0.75 if is_sketch else 1.5
         cross_attention_kwargs = {"scale": lora_scale}
         
+        # Для скетчей мы "вытравливаем" фотографичность и лишние фоны из камней/камней
+        current_neg_prompt = negative_prompt
+        if is_sketch:
+            current_neg_prompt += ", photo, real background, rocks, stones, plants, 3d render, realistic textures"
+        
         with torch.autocast("cuda"):
             # 1. Базовая генерация (Чебурашка)
             base_img = pipe(
-                prompt, negative_prompt=negative_prompt,
+                prompt, negative_prompt=current_neg_prompt,
                 num_inference_steps=30, guidance_scale=8.5,
                 cross_attention_kwargs=cross_attention_kwargs
             ).images[0]
             
             if is_sketch:
-                # Для скетча НЕ делаем рефайн, чтобы не "замыливать" карандашную фактуру 
+                # Для скетча НЕ делаем рефайн
                 image = base_img 
             else:
-                # 2. Hires. Fix (Ремонт деталей лица и рта) только для фотореализма
+                # 2. Hires. Fix (Ремонт деталей лица и рта)
                 upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
                 image = pipe_img2img(
-                    prompt=prompt, negative_prompt=negative_prompt,
+                    prompt=prompt, negative_prompt=current_neg_prompt,
                     image=upscaled, 
-                    strength=0.22, # Мягко прорисовываем губы
+                    strength=0.22, 
                     guidance_scale=8.5,
                     cross_attention_kwargs=cross_attention_kwargs
                 ).images[0]
