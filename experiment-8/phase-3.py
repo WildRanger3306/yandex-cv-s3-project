@@ -108,57 +108,30 @@ for ckpt in checkpoints:
     print(f"Загрузка пайплайна с подменённым UNet: {ckpt}")
     print(f"==========================================")
     
-    # 1. Загружаем "чистый" UNet
-    unet = UNet2DConditionModel.from_pretrained(
+    # 3. Собираем пайплайн с базовыми компонентами
+    pipe = StableDiffusionPipeline.from_pretrained(
         model_id, 
-        subfolder="unet", 
-        torch_dtype=torch.float16
-    ).to("cuda")
-    
-    # 2. Инициализируем ту же самую конфигурацию адаптера, что была на этапе 2
-    # Это добавит в архитектуру UNet нужные слои, чтобы она в точности 
-    # совпала с тем 1.8-гигабайтным "мутантом", который мы сохранили.
-    lora_config = LoraConfig(
-        r=16, 
-        init_lora_weights="gaussian",
-        target_modules=["to_k", "to_q", "to_v", "to_out.0"]
-    )
-    unet.add_adapter(lora_config)
-    
-    # 3. Загружаем дообученный Text Encoder (если есть)
-    text_encoder_path = os.path.join(ckpt, "text_encoder")
-    if os.path.exists(text_encoder_path):
-        print(f" -> Загрузка кастомного Text Encoder из {text_encoder_path}")
-        text_encoder = CLIPTextModel.from_pretrained(text_encoder_path, torch_dtype=torch.float16).to("cuda")
-    else:
-        print(" -> ВНИМАНИЕ: Кастомный Text Encoder не найден, использую базовый")
-        text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder", torch_dtype=torch.float16).to("cuda")
-
-    # 4. Напрямую загружаем веса LoRA в UNet
-    weights_path = os.path.join(ckpt, "lora_weights.pt")
-    if os.path.exists(weights_path):
-        state_dict = torch.load(weights_path, weights_only=True)
-        # Оставляем strict=False, так как стейт содержит только ключи lora_
-        unet.load_state_dict(state_dict, strict=False)
-    else:
-        print(f"Файл весов не найден по пути: {weights_path}")
-        continue
-    
-    # 5. Собираем пайплайны (Txt2Img + Img2Img для доработки)
-    pipe_txt2img = StableDiffusionPipeline.from_pretrained(
-        model_id, unet=unet, text_encoder=text_encoder, torch_dtype=torch.float16, safety_checker=None
-    ).to("cuda")
-    
-    from diffusers import StableDiffusionImg2ImgPipeline
-    pipe_img2img = StableDiffusionImg2ImgPipeline(
-        vae=pipe_txt2img.vae,
-        text_encoder=pipe_txt2img.text_encoder,
-        tokenizer=pipe_txt2img.tokenizer,
-        unet=pipe_txt2img.unet,
-        scheduler=pipe_txt2img.scheduler,
-        feature_extractor=pipe_txt2img.feature_extractor,
+        torch_dtype=torch.float16,
         safety_checker=None
     ).to("cuda")
+
+    # 4. Нативная загрузка LoRA
+    weights_path = os.path.join(ckpt, "lora_weights.pt")
+    if os.path.exists(weights_path):
+        print(f" -> Загрузка LoRA весов через Diffusers: {weights_path}")
+        # Этот метод сам разберется с названиями слоев
+        pipe.load_lora_weights(ckpt, weight_name="lora_weights.pt")
+    else:
+        print(f"Файл весов не найден: {weights_path}")
+        continue
+    
+    # 5. Собираем Img2Img для рефайна, используя уже заряженный LoRA пайплайн
+    from diffusers import StableDiffusionImg2ImgPipeline
+    pipe_img2img = StableDiffusionImg2ImgPipeline.from_pipe(pipe).to("cuda")
+
+    # 6. Включаем Овердрайв (усиливаем LoRA, чтобы прогнать мишку)
+    # scale=1.2 заставит Чебурашку проявиться сильнее
+    cross_attention_kwargs = {"scale": 1.2}
     
     # Запускаем генерацию с использованием Hires Fix внутри цикла
     print(f"Генерация для: {ckpt}...")
@@ -168,7 +141,23 @@ for ckpt in checkpoints:
     
     for i, prompt in enumerate(prompts):
         print(f" -> Промпт {i+1}: '{prompt}'")
-        image = run_hires_generation(pipe_txt2img, pipe_img2img, prompt, negative_prompt)
+        
+        # Добавляем cross_attention_kwargs для управления силой LoRA
+        with torch.autocast("cuda"):
+            # 1. База
+            base_img = pipe(
+                prompt, negative_prompt=negative_prompt,
+                num_inference_steps=30, guidance_scale=8.5,
+                cross_attention_kwargs=cross_attention_kwargs
+            ).images[0]
+            
+            # 2. Рефайн
+            upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
+            image = pipe_img2img(
+                prompt=prompt, negative_prompt=negative_prompt,
+                image=upscaled, strength=0.22, guidance_scale=12.0,
+                cross_attention_kwargs=cross_attention_kwargs
+            ).images[0]
         
         axes[i].imshow(image)
         axes[i].set_title(prompt, fontsize=9, wrap=True)
@@ -186,11 +175,9 @@ for ckpt in checkpoints:
     plt.close()
     print(f"[!] Сетка сохранена: {grid_path}")
     
-    # Очищаем память перед загрузкой следующего чекпоинта
-    del pipe_txt2img
+    # Очищаем память
+    del pipe
     del pipe_img2img
-    del unet
-    del text_encoder
     torch.cuda.empty_cache()
 
 mlflow.end_run()
