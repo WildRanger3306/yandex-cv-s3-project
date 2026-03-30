@@ -108,29 +108,43 @@ for ckpt in checkpoints:
     print(f"Загрузка пайплайна с подменённым UNet: {ckpt}")
     print(f"==========================================")
     
-    # 3. Собираем пайплайн с базовыми компонентами
-    pipe = StableDiffusionPipeline.from_pretrained(
-        model_id, 
-        torch_dtype=torch.float16,
-        safety_checker=None
+    # 1. Загружаем чистый UNet
+    unet = UNet2DConditionModel.from_pretrained(
+        model_id, subfolder="unet", torch_dtype=torch.float16
     ).to("cuda")
+    
+    # 2. Добавляем тот же адаптер, что был при обучении
+    # ВАЖНО: target_modules должны совпадать с фазой обучения!
+    lora_config = LoraConfig(
+        r=16, 
+        target_modules=["to_k", "to_q", "to_v", "to_out.0"]
+    )
+    unet.add_adapter(lora_config)
 
-    # 4. Нативная загрузка LoRA
+    # 3. Нативная загрузка весов напрямую в unet
     weights_path = os.path.join(ckpt, "lora_weights.pt")
     if os.path.exists(weights_path):
-        print(f" -> Загрузка LoRA весов через Diffusers: {weights_path}")
-        # Этот метод сам разберется с названиями слоев
-        pipe.load_lora_weights(ckpt, weight_name="lora_weights.pt")
+        print(f" -> Ручная загрузка весов в UNet: {weights_path}")
+        state_dict = torch.load(weights_path, weights_only=True)
+        # strict=False важен, так как у нас в модели теперь есть LoRA слои
+        unet.load_state_dict(state_dict, strict=False)
     else:
         print(f"Файл весов не найден: {weights_path}")
         continue
     
-    # 5. Собираем Img2Img для рефайна, используя уже заряженный LoRA пайплайн
+    # 4. Собираем пайплайн с УЖЕ ЗАРЯЖЕННЫМ UNet
+    pipe = StableDiffusionPipeline.from_pretrained(
+        model_id, 
+        unet=unet,
+        torch_dtype=torch.float16,
+        safety_checker=None
+    ).to("cuda")
+
+    # 5. Собираем Img2Img для рефайна
     from diffusers import StableDiffusionImg2ImgPipeline
     pipe_img2img = StableDiffusionImg2ImgPipeline.from_pipe(pipe).to("cuda")
 
-    # 6. Включаем Овердрайв (усиливаем LoRA, чтобы прогнать мишку)
-    # scale=1.2 заставит Чебурашку проявиться сильнее
+    # scale=1.2 для уверенности
     cross_attention_kwargs = {"scale": 1.2}
     
     # Запускаем генерацию с использованием Hires Fix внутри цикла
