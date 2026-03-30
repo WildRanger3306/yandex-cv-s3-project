@@ -114,28 +114,36 @@ for ckpt in checkpoints:
     ).to("cuda")
     
     # 2. Добавляем тот же адаптер, что был при обучении
-    # ВАЖНО: target_modules должны совпадать с фазой обучения!
     lora_config = LoraConfig(
         r=16, 
         target_modules=["to_k", "to_q", "to_v", "to_out.0"]
     )
     unet.add_adapter(lora_config)
 
-    # 3. Нативная загрузка весов напрямую в unet
+    # 3. Загружаем дообученный Text Encoder (РАЗУМ МОДЕЛИ)
+    text_encoder_path = os.path.join(ckpt, "text_encoder")
+    if os.path.exists(text_encoder_path):
+        print(f" -> Загрузка дообученного Text Encoder из {text_encoder_path}")
+        text_encoder = CLIPTextModel.from_pretrained(text_encoder_path, torch_dtype=torch.float16).to("cuda")
+    else:
+        print(" -> ВНИМАНИЕ: Дообученный Text Encoder не найден, использую базовый")
+        text_encoder = CLIPTextModel.from_pretrained(model_id, subfolder="text_encoder", torch_dtype=torch.float16).to("cuda")
+
+    # 4. Загрузка весов LoRA напрямую в unet
     weights_path = os.path.join(ckpt, "lora_weights.pt")
     if os.path.exists(weights_path):
-        print(f" -> Ручная загрузка весов в UNet: {weights_path}")
+        print(f" -> Ручная загрузка LoRA-весов в UNet: {weights_path}")
         state_dict = torch.load(weights_path, weights_only=True)
-        # strict=False важен, так как у нас в модели теперь есть LoRA слои
         unet.load_state_dict(state_dict, strict=False)
     else:
         print(f"Файл весов не найден: {weights_path}")
         continue
     
-    # 4. Собираем пайплайн с УЖЕ ЗАРЯЖЕННЫМ UNet
+    # 5. Собираем пайплайн
     pipe = StableDiffusionPipeline.from_pretrained(
         model_id, 
         unet=unet,
+        text_encoder=text_encoder,
         torch_dtype=torch.float16,
         safety_checker=None
     ).to("cuda")
@@ -192,6 +200,8 @@ for ckpt in checkpoints:
     # Очищаем память
     del pipe
     del pipe_img2img
+    del unet
+    del text_encoder
     torch.cuda.empty_cache()
 
 mlflow.end_run()
