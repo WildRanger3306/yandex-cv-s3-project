@@ -148,7 +148,7 @@ print("Инициализация адаптеров LoRA (PEFT)...")
 lora_rank = 16
 lora_config = LoraConfig(
     r=lora_rank,
-    lora_alpha=8,
+    lora_alpha=16,
     lora_dropout=0.1,
     init_lora_weights="gaussian",
     # Captioning позволяет безопасно использовать все 4 модуля:
@@ -166,7 +166,7 @@ for param in unet.parameters():
 # ================================
 # 5. Настройка оптимизатора
 # ================================
-learning_rate = 8e-5
+learning_rate = 4e-5
 max_train_steps = 1000
 max_grad_norm = 1.0
 gradient_accumulation_steps = 4
@@ -204,7 +204,7 @@ mlflow.log_params({
     "learning_rate": learning_rate,
     "max_train_steps": max_train_steps,
     "lora_rank": lora_rank,
-    "lora_alpha": 8,
+    "lora_alpha": 16,
     "lora_dropout": 0.1,
     "batch_size": train_batch_size,
     "gradient_accumulation_steps": gradient_accumulation_steps,
@@ -288,7 +288,7 @@ while global_step < max_train_steps:
             mlflow.log_metric("loss", display_loss, step=global_step)
             mlflow.log_metric("lr", current_lr, step=global_step)
 
-            if global_step % 500 == 0:
+            if global_step % 200 == 0:
                 checkpoint_path = f"cheburashka_lora_checkpoint_{global_step}"
                 os.makedirs(checkpoint_path, exist_ok=True)
                 lora_state_dict = {k: v.cpu() for k, v in unet.state_dict().items() if "lora" in k}
