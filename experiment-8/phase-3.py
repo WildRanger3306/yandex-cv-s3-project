@@ -6,6 +6,7 @@ from safetensors.torch import load_file
 import os
 import mlflow
 from transformers import CLIPTextModel
+from PIL import Image
 
 def generate_and_plot(pipe, prompts, checkpoint_name):
     """
