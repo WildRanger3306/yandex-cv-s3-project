@@ -154,6 +154,9 @@ for ckpt in checkpoints:
     out_dir = "results_lora_refiner"
     os.makedirs(out_dir, exist_ok=True)
     
+    for i, prompt in enumerate(prompts):
+        print(f" -> Промпт {i+1}: '{prompt}'")
+        
         # Динамическая сила LoRA:
         # Для фотореализма нам нужен Чебурашка "на максималках" (1.5).
         # Но мощная LoRA выжигает стили базовой модели. 
