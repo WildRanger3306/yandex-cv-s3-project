@@ -147,8 +147,7 @@ for ckpt in checkpoints:
     from diffusers import StableDiffusionImg2ImgPipeline
     pipe_img2img = StableDiffusionImg2ImgPipeline.from_pipe(pipe).to("cuda")
 
-    # Овердрайв 1.5 для моментального проявления Чебурашки
-    cross_attention_kwargs = {"scale": 1.5}
+
     
     print(f"Генерация (LORA + REFINER) для: {ckpt}...")
     fig, axes = plt.subplots(1, len(prompts), figsize=(20, 5))
@@ -157,6 +156,13 @@ for ckpt in checkpoints:
     
     for i, prompt in enumerate(prompts):
         print(f" -> Промпт {i+1}: '{prompt}'")
+        
+        # Динамическая сила LoRA:
+        # Для фотореализма нам нужен Чебурашка "на максималках" (1.5).
+        # Но мощная LoRA выжигает стили базовой модели. 
+        # Поэтому для скетчей мы делаем LoRA "тише" (0.85), чтобы проступила текстура карандаша.
+        lora_scale = 0.85 if "sketch" in prompt.lower() else 1.5
+        cross_attention_kwargs = {"scale": lora_scale}
         
         with torch.autocast("cuda"):
             # 1. Базовая генерация (Чебурашка)
