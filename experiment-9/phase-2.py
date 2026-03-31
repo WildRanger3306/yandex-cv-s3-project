@@ -22,6 +22,7 @@ from transformers import CLIPTokenizer, CLIPTextModel
 from peft import LoraConfig
 from diffusers.optimization import get_scheduler
 from diffusers.utils.import_utils import is_xformers_available
+from transformers import CLIPProcessor, CLIPVisionModel
 
 # ================================
 # 1. Датасет с Captioning
@@ -130,6 +131,21 @@ if is_xformers_available():
     print("Включение xFormers для ускорения...")
     unet.enable_xformers_memory_efficient_attention()
 
+# --- ИНСТРУМЕНТАРИЙ ДЛЯ МЕТРИК ---
+print("Загрузка CLIP Vision для метрики сходства...")
+metric_model_id = "openai/clip-vit-base-patch32"
+metric_processor = CLIPProcessor.from_pretrained(metric_model_id)
+metric_vision_model = CLIPVisionModel.from_pretrained(metric_model_id).to("cuda", dtype=weight_dtype)
+
+def get_image_embedding(image):
+    """Извлекает визуальный эмбеддинг из картинки"""
+    inputs = metric_processor(images=image, return_tensors="pt").to("cuda")
+    # Приводим к типу weight_dtype (fp16) для совместимости
+    inputs = {k: v.to(dtype=weight_dtype) if v.is_floating_point() else v for k, v in inputs.items()}
+    with torch.no_grad():
+        outputs = metric_vision_model(**inputs)
+    return outputs.last_hidden_state[:, 0, :] # CLS токен
+
 # ================================
 # 3. Датасет
 # ================================
@@ -220,7 +236,13 @@ mlflow.log_params({
     "snr_gamma": 5.0,
     "weight_decay": weight_decay,
     "target_modules": "to_k, to_q, to_v, to_out.0",
+    "metrics_version": "1.1 (Similarity + GradNorm)",
 })
+
+# Подготовим референсный эмбеддинг Чебурашки из датасета (для метрики Similarity)
+print("[*] Фиксация эталона для метрики сходства...")
+ref_image = Image.open(dataset.image_paths[0]).convert("RGB")
+ref_embedding = get_image_embedding(ref_image)
 
 # ================================
 # 7. Цикл обучения
@@ -284,8 +306,11 @@ while global_step < max_train_steps:
         # Optimizer step раз в 4 батча (gradient accumulation)
         if inner_step % gradient_accumulation_steps == 0:
             scaler.unscale_(optimizer)
-            torch.nn.utils.clip_grad_norm_(unet.parameters(), max_grad_norm)
-
+            
+            # --- МЕТРИКА 1: Gradient Norm (логируем до клиппинга) ---
+            params_to_clip = list(unet.parameters()) + list(text_encoder.parameters())
+            grad_norm = torch.nn.utils.clip_grad_norm_(params_to_clip, max_grad_norm)
+            
             scaler.step(optimizer)
             scaler.update()
             lr_scheduler.step()
@@ -294,11 +319,12 @@ while global_step < max_train_steps:
             current_lr = lr_scheduler.get_last_lr()[0]
             display_loss = loss.item() * gradient_accumulation_steps
             progress_bar.update(1)
-            progress_bar.set_postfix(loss=f"{display_loss:.4f}", lr=f"{current_lr:.6f}")
+            progress_bar.set_postfix(loss=f"{display_loss:.4f}", lr=f"{current_lr:.6f}", gn=f"{grad_norm:.2f}")
             global_step += 1
 
             mlflow.log_metric("loss", display_loss, step=global_step)
             mlflow.log_metric("lr", current_lr, step=global_step)
+            mlflow.log_metric("grad_norm", grad_norm.item(), step=global_step)
 
             if global_step % 200 == 0:
                 checkpoint_path = f"cheburashka_lora_checkpoint_{global_step}"
@@ -350,6 +376,18 @@ while global_step < max_train_steps:
                     grid_img.paste(images[1], (512, 0))
                     grid_img.paste(images[2], (0, 512))
                     grid_img.paste(images[3], (512, 512))
+                    
+                    # --- МЕТРИКА 2: Identity Similarity (CLIP) ---
+                    similarities = []
+                    for val_img in images:
+                        val_emb = get_image_embedding(val_img)
+                        # Косинусное сходство между валидацией и эталоном
+                        sim = torch.nn.functional.cosine_similarity(ref_embedding, val_emb).item()
+                        similarities.append(sim)
+                    
+                    avg_similarity = sum(similarities) / len(similarities)
+                    mlflow.log_metric("identity_similarity", avg_similarity, step=global_step)
+                    print(f"[#] Сходство с оригиналом: {avg_similarity:.4f}")
                     
                     mlflow.log_image(grid_img, f"val_{global_step}.png")
                     print(f"[#] Валидация успешна, изображения загружены в MLflow")
