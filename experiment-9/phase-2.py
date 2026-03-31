@@ -196,13 +196,13 @@ scaler = torch.amp.GradScaler("cuda")
 unet.train()
 global_step = 0
 inner_step = 0
-progress_bar = tqdm(total=max_train_steps, desc="Обучение (Experiment-8 Mastery)")
+progress_bar = tqdm(total=max_train_steps, desc="Обучение (Experiment-9 Dead, Sketch and Bike)")
 
 # ================================
 # 6. MLflow
 # ================================
 mlflow.set_tracking_uri("http://188.243.201.66:5000")
-mlflow.set_experiment("cheburashka-lora-experiment-8")
+mlflow.set_experiment("cheburashka-lora-experiment-9")
 mlflow.start_run()
 mlflow.log_params({
     "experiment": 8,
