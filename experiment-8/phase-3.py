@@ -100,7 +100,7 @@ negative_prompt = (
 
 # Подключаемся к MLflow
 mlflow.set_tracking_uri("http://188.243.201.66:5000")
-mlflow.set_experiment("cheburashka-lora-final-results")
+mlflow.set_experiment("cheburashka-lora-inference-8")
 mlflow.start_run()
 
 for ckpt in checkpoints:

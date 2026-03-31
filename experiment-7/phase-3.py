@@ -72,7 +72,7 @@ print("=== ЭТАП 3: Демонстрация результатов ===")
 # Подключаемся к MLflow
 #os.environ["NO_PROXY"] = "188.243.201.66,127.0.0.1,localhost"
 mlflow.set_tracking_uri("http://188.243.201.66:5000")
-mlflow.set_experiment("cheburashka-lora-inference")
+mlflow.set_experiment("cheburashka-lora-inference-7")
 mlflow.start_run()
 
 for ckpt in checkpoints:
