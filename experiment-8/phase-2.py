@@ -134,7 +134,7 @@ if is_xformers_available():
 print("Загрузка CLIP Vision для метрики сходства...")
 metric_model_id = "openai/clip-vit-base-patch32"
 metric_processor = CLIPProcessor.from_pretrained(metric_model_id)
-metric_vision_model = CLIPVisionModel.from_pretrained(metric_model_id).to("cuda", dtype=weight_dtype)
+metric_vision_model = CLIPVisionModel.from_pretrained(metric_model_id, use_safetensors=True).to("cuda", dtype=weight_dtype)
 
 def get_image_embedding(image):
     """Извлекает визуальный эмбеддинг из картинки"""
