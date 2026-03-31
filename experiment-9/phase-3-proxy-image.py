@@ -44,43 +44,16 @@ def generate_and_plot(pipe, prompts, checkpoint_name):
     
     mlflow.log_artifact(out_file)
 
-def run_hires_generation(pipe_txt2img, pipe_img2img, prompt, neg_prompt):
-    """
-    Умная генерация: база 512 + мягкая доработка 768 со strength=0.35
-    """
-    with torch.autocast("cuda"):
-        # 1. Базовая генерация ( identity )
-        base_img = pipe_txt2img(
-            prompt, 
-            negative_prompt=neg_prompt,
-            num_inference_steps=30, 
-            guidance_scale=8.0
-        ).images[0]
-        
-        # 2. Мягкая доработка деталей ( лицо/рот )
-        upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
-        refined = pipe_img2img(
-            prompt=prompt,
-            negative_prompt=neg_prompt,
-            image=upscaled,
-            strength=0.22, # Снижаем до ювелирного уровня
-            guidance_scale=12.0, # Усиливаем влияние LoRA
-            num_inference_steps=20
-        ).images[0]
-        
-    return refined
-
-# Список промптов из задания (Шаг 1: фокус на игрушке)
+# Список промптов из задания (Proxy Image Generation)
 prompts = [
     "<cheburashka> with the Eiffel Tower in the background",
     "<cheburashka> plushie, stuffed toy, made of fabric, button eyes, lifeless, stitching, toy on shelf", 
     "<cheburashka> in sketch style",
-    "<cheburashka> riding a bycycle"
+    "<cheburashka> riding a bicycle, full body, cycling in the park, holding handlebars"
 ]
 
 model_id = "runwayml/stable-diffusion-v1-5"
 # Попробуем сгенерировать результаты для промежуточного и финального чекпоинтов
-# Полный список чекпоинтов для анализа динамики
 checkpoints = [
     "cheburashka_lora_checkpoint_200", 
     "cheburashka_lora_checkpoint_400", 
@@ -89,7 +62,7 @@ checkpoints = [
     "cheburashka_lora_checkpoint_1000"
 ]
 
-print("=== ЭТАП 3: Демонстрация результатов ===")
+print("=== ЭТАП 3: Proxy-генерация ===")
 
 # Негативные промпты для спасения лица
 negative_prompt = (
@@ -147,28 +120,28 @@ for ckpt in checkpoints:
     from diffusers import StableDiffusionImg2ImgPipeline
     pipe_img2img = StableDiffusionImg2ImgPipeline.from_pipe(pipe).to("cuda")
 
-
-    
-    print(f"Генерация (LORA + REFINER) для: {ckpt}...")
+    print(f"Генерация (LORA + PROXY REFINER) для: {ckpt}...")
     fig, axes = plt.subplots(1, len(prompts), figsize=(20, 5))
-    out_dir = "results_lora_refiner"
+    out_dir = "results_lora_proxy"
     os.makedirs(out_dir, exist_ok=True)
     
     for i, prompt in enumerate(prompts):
         print(f" -> Промпт {i+1}: '{prompt}'")
         
-        # Динамическая сила и анти-промпты для LoRA:
         lower_prompt = prompt.lower()
         is_sketch = "sketch" in lower_prompt
         is_plushie = "plushie" in lower_prompt or "toy" in lower_prompt
+        is_bicycle = "bicycle" in lower_prompt
         
-        # Шаг 1: Настройка весов для игрушки
+        # Настройка базовых весов
         if is_sketch:
             lora_scale = 0.75
         elif is_plushie:
             lora_scale = 1.3 # Умеренная сила для игрушки
+        elif is_bicycle:
+            lora_scale = 1.5 # LoRA включится только на ВТОРОМ этапе (Img2Img)
         else:
-            lora_scale = 1.6 # Максимальная сила для остальных (будем править на след. шагах)
+            lora_scale = 1.6 # Максимальная сила для живых персонажей
             
         cross_attention_kwargs = {"scale": lora_scale}
         
@@ -178,30 +151,51 @@ for ckpt in checkpoints:
             current_neg_prompt += ", photo, real background, rocks, stones, plants, 3d render, realistic textures"
         
         if is_plushie:
-            # Убираем "жизнь" из глаз и текстур
             current_neg_prompt += ", alive, organic, real animal, eye reflection, wet nose, emotional eyes, movie character"
-        
-        with torch.autocast("cuda"):
-            # 1. Базовая генерация (Чебурашка)
-            base_img = pipe(
-                prompt, negative_prompt=current_neg_prompt,
-                num_inference_steps=30, guidance_scale=8.5,
-                cross_attention_kwargs=cross_attention_kwargs
-            ).images[0]
             
-            if is_sketch:
-                # Для скетча НЕ делаем рефайн
-                image = base_img 
-            else:
-                # 2. Hires. Fix (Ремонт деталей лица и рта)
+        with torch.autocast("cuda"):
+            if is_bicycle:
+                # ВЕЛОСИПЕД: Хитрый двухэтапный процесс (Proxy Generation)
+                print("    [*] Запуск Proxy Generation для велосипеда...")
+                # 1. Генерируем "болванку" без участия LoRA 
+                proxy_prompt = "a cute fluffy brown monkey riding a bicycle, full body, cycling in the park, holding handlebars, detailed"
+                base_img = pipe(
+                    proxy_prompt, negative_prompt=current_neg_prompt,
+                    num_inference_steps=30, guidance_scale=7.5,
+                    cross_attention_kwargs={"scale": 0.0} # LoRA ОТКЛЮЧЕНА
+                ).images[0]
+                
+                # 2. Превращаем болванку в Чебурашку (Сильная LoRA + Img2Img)
                 upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
                 image = pipe_img2img(
                     prompt=prompt, negative_prompt=current_neg_prompt,
                     image=upscaled, 
-                    strength=0.22, 
-                    guidance_scale=8.5,
+                    strength=0.65, # Достаточно сильно, чтобы закрасить обезьянку, но сохранить геометрию велосипеда
+                    guidance_scale=10.0,
+                    cross_attention_kwargs={"scale": lora_scale} # СКЕЙЛ ВКЛЮЧАЕТСЯ ЗДЕСЬ
+                ).images[0]
+                
+            else:
+                # 1. Базовая генерация для Чебурашки (с LoRA)
+                base_img = pipe(
+                    prompt, negative_prompt=current_neg_prompt,
+                    num_inference_steps=30, guidance_scale=8.5,
                     cross_attention_kwargs=cross_attention_kwargs
                 ).images[0]
+                
+                if is_sketch:
+                    # Для скетча НЕ делаем рефайн
+                    image = base_img 
+                else:
+                    # 2. Hires. Fix (Ремонт деталей лица и рта для всех кроме велосипеда и скетча)
+                    upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
+                    image = pipe_img2img(
+                        prompt=prompt, negative_prompt=current_neg_prompt,
+                        image=upscaled, 
+                        strength=0.22, # Ювелирная точность для лица
+                        guidance_scale=8.5,
+                        cross_attention_kwargs=cross_attention_kwargs
+                    ).images[0]
         
         axes[i].imshow(image)
         axes[i].set_title(prompt, fontsize=9, wrap=True)
@@ -213,7 +207,7 @@ for ckpt in checkpoints:
         mlflow.log_artifact(local_path)
         
     plt.tight_layout()
-    grid_path = os.path.join(out_dir, f"FINAL_GRID_{ckpt}.png")
+    grid_path = os.path.join(out_dir, f"FINAL_GRID_PROXY_{ckpt}.png")
     plt.savefig(grid_path)
     mlflow.log_artifact(grid_path)
     plt.close()
