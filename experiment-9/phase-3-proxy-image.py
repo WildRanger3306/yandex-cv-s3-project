@@ -156,12 +156,14 @@ for ckpt in checkpoints:
         with torch.autocast("cuda"):
             if is_bicycle:
                 # ВЕЛОСИПЕД: Хитрый двухэтапный процесс (Proxy Generation)
-                print("    [*] Запуск Proxy Generation для велосипеда...")
-                # 1. Генерируем "болванку" без участия LoRA 
-                proxy_prompt = "a cute fluffy brown monkey riding a bicycle, full body, cycling in the park, holding handlebars, detailed"
+                print("    [*] Шаг 2 (Полировка): Запуск Proxy Generation для велосипеда...")
+                
+                # 1. Генерируем "болванку" (Silhouette Match)
+                # Просим огромные уши СРАЗУ, чтобы базовый велик их учитывал
+                proxy_prompt = "a small fluffy creature with huge oversized round ears riding a bicycle, full body, cycling in the park, hands on handlebars, high quality"
                 base_img = pipe(
                     proxy_prompt, negative_prompt=current_neg_prompt,
-                    num_inference_steps=30, guidance_scale=7.5,
+                    num_inference_steps=35, guidance_scale=7.5,
                     cross_attention_kwargs={"scale": 0.0} # LoRA ОТКЛЮЧЕНА
                 ).images[0]
                 
@@ -170,9 +172,9 @@ for ckpt in checkpoints:
                 image = pipe_img2img(
                     prompt=prompt, negative_prompt=current_neg_prompt,
                     image=upscaled, 
-                    strength=0.65, # Достаточно сильно, чтобы закрасить обезьянку, но сохранить геометрию велосипеда
-                    guidance_scale=10.0,
-                    cross_attention_kwargs={"scale": lora_scale} # СКЕЙЛ ВКЛЮЧАЕТСЯ ЗДЕСЬ
+                    strength=0.72, # Повышаем силу трансформации (чтобы 5/10 превратилось в 10/10)
+                    guidance_scale=12.0, # Усиливаем пробитие промпта
+                    cross_attention_kwargs={"scale": 1.7} # Овердрайв Лоры для велосипеда
                 ).images[0]
                 
             else:
