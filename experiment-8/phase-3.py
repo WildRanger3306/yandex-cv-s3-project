@@ -127,7 +127,7 @@ for ckpt in checkpoints:
     
     print(f"Генерация (LORA + REFINER) для: {ckpt}...")
     fig, axes = plt.subplots(1, len(prompts), figsize=(20, 5))
-    out_dir = "results_lora_refiner"
+    out_dir = "results_local"
     os.makedirs(out_dir, exist_ok=True)
     
     for i, prompt in enumerate(prompts):
