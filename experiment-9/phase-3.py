@@ -72,8 +72,8 @@ def run_hires_generation(pipe_txt2img, pipe_img2img, prompt, neg_prompt):
 
 # Список промптов из задания (Шаг 1: фокус на игрушке)
 prompts = [
-    "<cheburashka> plushie, stuffed toy, made of fabric, button eyes, lifeless, stitching, toy on shelf", 
     "<cheburashka> with the Eiffel Tower in the background",
+    "<cheburashka> plushie, stuffed toy, made of fabric, button eyes, lifeless, stitching, toy on shelf", 
     "<cheburashka> in sketch style",
     "<cheburashka> riding a bycycle"
 ]
