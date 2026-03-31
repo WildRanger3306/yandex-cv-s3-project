@@ -55,16 +55,15 @@ model_id = "runwayml/stable-diffusion-v1-5"
 # Попробуем сгенерировать результаты для промежуточного и финального чекпоинтов
 checkpoints = [
     # "cheburashka_lora_checkpoint_100", 
-    # "cheburashka_lora_checkpoint_200", 
+    "cheburashka_lora_checkpoint_200", 
     # "cheburashka_lora_checkpoint_300", 
-    # "cheburashka_lora_checkpoint_400", 
+    "cheburashka_lora_checkpoint_400", 
     # "cheburashka_lora_checkpoint_500", 
-    # "cheburashka_lora_checkpoint_600", 
+    "cheburashka_lora_checkpoint_600", 
     # "cheburashka_lora_checkpoint_700", 
-    # "cheburashka_lora_checkpoint_800", 
+    "cheburashka_lora_checkpoint_800", 
     # "cheburashka_lora_checkpoint_900", 
-    # "cheburashka_lora_checkpoint_1000", 
-    "cheburashka_lora_final"
+    "cheburashka_lora_checkpoint_1000"
 ]
 
 print("=== ЭТАП 3: Демонстрация результатов ===")
