@@ -237,10 +237,14 @@ mlflow.log_params({
     "metrics_version": "1.1 (Similarity + GradNorm)",
 })
 
-# Фиксируем эталонный эмбеддинг Чебурашки из датасета
-print("[*] Фиксация эталона для метрики сходства...")
-ref_image = Image.open(dataset.image_paths[0]).convert("RGB")
-ref_embedding = get_image_embedding(ref_image)
+# Фиксируем УСРЕДНЁННЫЙ эталонный эмбеддинг по всему датасету
+print(f"[*] Вычисление среднего эталона по {len(dataset.image_paths)} картинкам...")
+ref_embeddings = []
+for img_path in dataset.image_paths:
+    img = Image.open(img_path).convert("RGB")
+    ref_embeddings.append(get_image_embedding(img))
+ref_embedding = torch.mean(torch.stack(ref_embeddings, dim=0), dim=0)
+print(f"[*] Эталон зафиксирован, shape: {ref_embedding.shape}")
 
 # ================================
 # 7. Цикл обучения
