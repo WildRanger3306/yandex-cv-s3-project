@@ -48,7 +48,8 @@ def generate_and_plot(pipe, prompts, checkpoint_name):
 # Список промптов из задания (Шаг 1: фокус на игрушке)
 prompts = [
     "<cheburashka> with the Eiffel Tower in the background",
-    "<cheburashka> plushie, stuffed toy, made of fabric, button eyes, lifeless, stitching, toy on shelf", 
+    # "<cheburashka> plushie, stuffed toy, made of fabric, button eyes, lifeless, stitching, toy on shelf", 
+    "<cheburashka> plushie", 
     "<cheburashka> in sketch style",
     "<cheburashka> riding a bycycle"
 ]
