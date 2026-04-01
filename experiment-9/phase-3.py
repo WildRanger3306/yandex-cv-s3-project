@@ -44,31 +44,6 @@ def generate_and_plot(pipe, prompts, checkpoint_name):
     
     mlflow.log_artifact(out_file)
 
-def run_hires_generation(pipe_txt2img, pipe_img2img, prompt, neg_prompt):
-    """
-    Умная генерация: база 512 + мягкая доработка 768 со strength=0.35
-    """
-    with torch.autocast("cuda"):
-        # 1. Базовая генерация ( identity )
-        base_img = pipe_txt2img(
-            prompt, 
-            negative_prompt=neg_prompt,
-            num_inference_steps=30, 
-            guidance_scale=8.0
-        ).images[0]
-        
-        # 2. Мягкая доработка деталей ( лицо/рот )
-        upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
-        refined = pipe_img2img(
-            prompt=prompt,
-            negative_prompt=neg_prompt,
-            image=upscaled,
-            strength=0.22, # Снижаем до ювелирного уровня
-            guidance_scale=12.0, # Усиливаем влияние LoRA
-            num_inference_steps=20
-        ).images[0]
-        
-    return refined
 
 # Список промптов из задания (Шаг 1: фокус на игрушке)
 prompts = [
@@ -215,6 +190,7 @@ for ckpt in checkpoints:
     plt.tight_layout()
     grid_path = os.path.join(out_dir, f"FINAL_GRID_{ckpt}.png")
     plt.savefig(grid_path)
+    plt.show()
     mlflow.log_artifact(grid_path)
     plt.close()
     print(f"[!] Сетка сохранена: {grid_path}")
