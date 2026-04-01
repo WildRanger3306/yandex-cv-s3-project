@@ -210,3 +210,6 @@ __marimo__/
 cheburashka_embeds.pt
 lora_weights.pt
 cheburashka_lora_*
+raw_model_generation.png
+metrics.png
+dataset_visualization.png

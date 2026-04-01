@@ -409,4 +409,21 @@ lora_state_dict = {k: v.cpu() for k, v in unet.state_dict().items() if "lora" in
 torch.save(lora_state_dict, os.path.join(final_path, "lora_weights.pt"))
 print("Финальная LoRA-модель сохранена в 'cheburashka_lora_final'")
 
+try:
+    active_run = mlflow.active_run()
+    run_id = active_run.info.run_id if active_run else None
+except Exception:
+    run_id = None
+
 mlflow.end_run()
+
+if run_id:
+    try:
+        from visualize_metrics import get_metrics_image
+        print(f"Выгрузка и сохранение графиков метрик для run_id {run_id}...")
+        img = get_metrics_image(run_id)
+        out_path = "final_metrics.png"
+        img.save(out_path)
+        print(f"✅ График сохранён: {out_path}")
+    except Exception as e:
+        print(f"⚠️ Ошибка при визуализации метрик: {e}")
