@@ -1,6 +1,8 @@
 import torch
+import cv2
+import numpy as np
 import matplotlib.pyplot as plt
-from diffusers import StableDiffusionPipeline, UNet2DConditionModel
+from diffusers import StableDiffusionPipeline, UNet2DConditionModel, ControlNetModel, StableDiffusionControlNetPipeline
 from peft import LoraConfig
 from safetensors.torch import load_file
 import os
@@ -67,6 +69,12 @@ checkpoints = [
 
 print("=== ЭТАП 3: Демонстрация результатов ===")
 
+# Загружаем ControlNet-модель (Canny) один раз
+print("Загрузка ControlNet-Canny...")
+controlnet = ControlNetModel.from_pretrained(
+    "lllyasviel/sd-controlnet-canny", torch_dtype=torch.float16
+).to("cuda")
+
 # Негативные промпты для спасения лица
 negative_prompt = (
     "bad anatomy, deformed face, missing mouth, blurred mouth, no mouth, "
@@ -76,7 +84,7 @@ negative_prompt = (
 
 # Подключаемся к MLflow
 mlflow.set_tracking_uri("http://188.243.201.66:5000")
-mlflow.set_experiment("cheburashka-lora-inference-9")
+mlflow.set_experiment("cheburashka-lora-inference-9-controlnet")
 mlflow.start_run()
 
 for ckpt in checkpoints:
@@ -123,6 +131,16 @@ for ckpt in checkpoints:
     from diffusers import StableDiffusionImg2ImgPipeline
     pipe_img2img = StableDiffusionImg2ImgPipeline.from_pipe(pipe).to("cuda")
 
+    # 6. Собираем ControlNet Pipeline
+    pipe_controlnet = StableDiffusionControlNetPipeline.from_pretrained(
+        model_id, 
+        unet=unet,
+        controlnet=controlnet,
+        text_encoder=text_encoder,
+        torch_dtype=torch.float16,
+        safety_checker=None
+    ).to("cuda")
+
 
     
     print(f"Генерация (LORA + REFINER) для: {ckpt}...")
@@ -137,12 +155,15 @@ for ckpt in checkpoints:
         lower_prompt = prompt.lower()
         is_sketch = "sketch" in lower_prompt
         is_plushie = "plushie" in lower_prompt or "toy" in lower_prompt
+        is_bicycle = "bicycle" in lower_prompt or "bycycle" in lower_prompt
         
         # Шаг 1: Настройка весов для игрушки
         if is_sketch:
             lora_scale = 0.75
         elif is_plushie:
             lora_scale = 1.3 # Умеренная сила для игрушки
+        elif is_bicycle:
+            lora_scale = 1.0 # Умеренная сила для ControlNet
         else:
             lora_scale = 1.6 # Максимальная сила для остальных (будем править на след. шагах)
             
@@ -158,26 +179,58 @@ for ckpt in checkpoints:
             current_neg_prompt += ", alive, organic, real animal, eye reflection, wet nose, emotional eyes, movie character"
         
         with torch.autocast("cuda"):
-            # 1. Базовая генерация (Чебурашка)
-            base_img = pipe(
-                prompt, negative_prompt=current_neg_prompt,
-                num_inference_steps=30, guidance_scale=8.5,
-                cross_attention_kwargs=cross_attention_kwargs
-            ).images[0]
-            
-            if is_sketch:
-                # Для скетча НЕ делаем рефайн
-                image = base_img 
-            else:
-                # 2. Hires. Fix (Ремонт деталей лица и рта)
-                upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
-                image = pipe_img2img(
+            if is_bicycle:
+                print("    [*] Процесс ControlNet для велосипеда...")
+                # 1. Генерируем силуэт
+                proxy_prompt = "a small person riding a bicycle, full body, side view, natural lighting, high quality"
+                base_img = pipe(
+                    proxy_prompt, negative_prompt=current_neg_prompt,
+                    num_inference_steps=20, guidance_scale=7.5,
+                    cross_attention_kwargs={"scale": 0.0} # LoRA отключена
+                ).images[0]
+                
+                # 2. Извлекаем Canny
+                img_array = np.array(base_img)
+                edges = cv2.Canny(img_array, 100, 200)
+                edges = edges[:, :, None]
+                edges = np.concatenate([edges, edges, edges], axis=2)
+                control_image = Image.fromarray(edges)
+                
+                # Залогируем карту
+                cn_path = os.path.join(out_dir, f"{ckpt}_canny_edges.png")
+                control_image.save(cn_path)
+                mlflow.log_artifact(cn_path)
+                
+                # 3. Применяем ControlNet + LoRA
+                image = pipe_controlnet(
                     prompt=prompt, negative_prompt=current_neg_prompt,
-                    image=upscaled, 
-                    strength=0.22, 
+                    image=control_image,
+                    num_inference_steps=30,
                     guidance_scale=8.5,
+                    controlnet_conditioning_scale=1.0,
                     cross_attention_kwargs=cross_attention_kwargs
                 ).images[0]
+            else:
+                # 1. Базовая генерация (Чебурашка)
+                base_img = pipe(
+                    prompt, negative_prompt=current_neg_prompt,
+                    num_inference_steps=30, guidance_scale=8.5,
+                    cross_attention_kwargs=cross_attention_kwargs
+                ).images[0]
+                
+                if is_sketch:
+                    # Для скетча НЕ делаем рефайн
+                    image = base_img 
+                else:
+                    # 2. Hires. Fix (Ремонт деталей лица и рта)
+                    upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
+                    image = pipe_img2img(
+                        prompt=prompt, negative_prompt=current_neg_prompt,
+                        image=upscaled, 
+                        strength=0.22, 
+                        guidance_scale=8.5,
+                        cross_attention_kwargs=cross_attention_kwargs
+                    ).images[0]
         
         axes[i].imshow(image)
         axes[i].set_title(prompt, fontsize=9, wrap=True)
@@ -199,6 +252,7 @@ for ckpt in checkpoints:
     # Очистка
     del pipe
     del pipe_img2img
+    del pipe_controlnet
     del unet
     torch.cuda.empty_cache()
 
