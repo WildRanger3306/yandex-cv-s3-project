@@ -76,7 +76,7 @@ negative_prompt = (
 
 # Подключаемся к MLflow
 mlflow.set_tracking_uri("http://188.243.201.66:5000")
-mlflow.set_experiment("cheburashka-lora-inference-9")
+mlflow.set_experiment("cheburashka-lora-inference-9-inpaint")
 mlflow.start_run()
 
 for ckpt in checkpoints:
@@ -123,6 +123,10 @@ for ckpt in checkpoints:
     from diffusers import StableDiffusionImg2ImgPipeline
     pipe_img2img = StableDiffusionImg2ImgPipeline.from_pipe(pipe).to("cuda")
 
+    # 6. Собираем Inpaint Pipeline
+    from diffusers import StableDiffusionInpaintPipeline
+    pipe_inpaint = StableDiffusionInpaintPipeline.from_pipe(pipe).to("cuda")
+
 
     
     print(f"Генерация (LORA + REFINER) для: {ckpt}...")
@@ -137,14 +141,17 @@ for ckpt in checkpoints:
         lower_prompt = prompt.lower()
         is_sketch = "sketch" in lower_prompt
         is_plushie = "plushie" in lower_prompt or "toy" in lower_prompt
+        is_bicycle = "bicycle" in lower_prompt or "bycycle" in lower_prompt
         
-        # Шаг 1: Настройка весов для игрушки
+        # Шаг 1: Настройка весов
         if is_sketch:
             lora_scale = 0.75
         elif is_plushie:
             lora_scale = 1.3 # Умеренная сила для игрушки
+        elif is_bicycle:
+            lora_scale = 1.5 # Сила для inpainting
         else:
-            lora_scale = 1.6 # Максимальная сила для остальных (будем править на след. шагах)
+            lora_scale = 1.6 # Максимальная сила для остальных
             
         cross_attention_kwargs = {"scale": lora_scale}
         
@@ -158,26 +165,62 @@ for ckpt in checkpoints:
             current_neg_prompt += ", alive, organic, real animal, eye reflection, wet nose, emotional eyes, movie character"
         
         with torch.autocast("cuda"):
-            # 1. Базовая генерация (Чебурашка)
-            base_img = pipe(
-                prompt, negative_prompt=current_neg_prompt,
-                num_inference_steps=30, guidance_scale=8.5,
-                cross_attention_kwargs=cross_attention_kwargs
-            ).images[0]
-            
-            if is_sketch:
-                # Для скетча НЕ делаем рефайн
-                image = base_img 
-            else:
-                # 2. Hires. Fix (Ремонт деталей лица и рта)
-                upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
-                image = pipe_img2img(
+            if is_bicycle:
+                print("    [*] Процесс Inpainting для велосипеда...")
+                # 1. Генерируем красивую базу без Лоры
+                proxy_prompt = "a person riding a bicycle, full body, side view, natural lighting, high quality"
+                base_img = pipe(
+                    proxy_prompt, negative_prompt=current_neg_prompt,
+                    num_inference_steps=30, guidance_scale=7.5,
+                    cross_attention_kwargs={"scale": 0.0} # LoRA отключена
+                ).images[0]
+                
+                # 2. Создаем маску для Inpaint
+                # Вместо тяжелого SAM создадим грубую эллиптическую маску,
+                # которая закрывает верхнюю часть изображения (голова и тело наездника),
+                # оставляя велосипед нетронутым.
+                from PIL import ImageDraw
+                mask_img = Image.new("L", base_img.size, 0)
+                draw = ImageDraw.Draw(mask_img)
+                # Овал по центру холста для наездника (зависит от композиции)
+                draw.ellipse((100, 50, 412, 380), fill=255)
+                
+                # Залогируем маску
+                mask_path = os.path.join(out_dir, f"{ckpt}_mask.png")
+                mask_img.save(mask_path)
+                mlflow.log_artifact(mask_path)
+                
+                # 3. Перерисовываем наездника в Чебурашку (Inpaint)
+                image = pipe_inpaint(
                     prompt=prompt, negative_prompt=current_neg_prompt,
-                    image=upscaled, 
-                    strength=0.22, 
+                    image=base_img,
+                    mask_image=mask_img,
+                    num_inference_steps=30,
                     guidance_scale=8.5,
+                    strength=0.9, # Высокиий Denoise для полного замещения
                     cross_attention_kwargs=cross_attention_kwargs
                 ).images[0]
+            else:
+                # 1. Базовая генерация (Чебурашка)
+                base_img = pipe(
+                    prompt, negative_prompt=current_neg_prompt,
+                    num_inference_steps=30, guidance_scale=8.5,
+                    cross_attention_kwargs=cross_attention_kwargs
+                ).images[0]
+                
+                if is_sketch:
+                    # Для скетча НЕ делаем рефайн
+                    image = base_img 
+                else:
+                    # 2. Hires. Fix (Ремонт деталей лица и рта)
+                    upscaled = base_img.resize((768, 768), resample=Image.LANCZOS)
+                    image = pipe_img2img(
+                        prompt=prompt, negative_prompt=current_neg_prompt,
+                        image=upscaled, 
+                        strength=0.22, 
+                        guidance_scale=8.5,
+                        cross_attention_kwargs=cross_attention_kwargs
+                    ).images[0]
         
         axes[i].imshow(image)
         axes[i].set_title(prompt, fontsize=9, wrap=True)
@@ -199,6 +242,7 @@ for ckpt in checkpoints:
     # Очистка
     del pipe
     del pipe_img2img
+    del pipe_inpaint
     del unet
     torch.cuda.empty_cache()
 
