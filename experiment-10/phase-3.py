@@ -26,15 +26,15 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 final_save_path = "models/cheburashka_lora_final"
 
 # Создадим снова пайплайн генерации и загрузим обученную модель.
+# safety_checker=None — отключаем здесь, чтобы он не заменил изображение чёрным квадратом
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    torch_dtype=torch.float32
+    torch_dtype=torch.float32,
+    safety_checker=None,
+    requires_safety_checker=False
 ).to("cuda")
 
 pipe.load_lora_weights(final_save_path)
-
-pipe.safety_checker = None
-pipe.requires_safety_checker = False
 
 
 prompt = "<cheburashka> plushie"

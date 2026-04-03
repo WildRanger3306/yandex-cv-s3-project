@@ -29,7 +29,7 @@ pipe = StableDiffusionPipeline.from_pretrained(
 ).to(device)
 
 lora_config = LoraConfig(
-    r=16, 
+    r=8,  # оптимум для простого персонажа с маленьким датасетом (4-16 для SD 1.5)
     target_modules=["to_k", "to_q", "to_v", "to_out.0"], 
     init_lora_weights="gaussian",
     lora_dropout=0.1
@@ -198,7 +198,7 @@ pipe.save_lora_weights(
 )
 
 config = {
-    "lora_rank": 128,
+    "lora_rank": 8,
     "trained_steps": max_train_steps,
     "learning_rate": 2.0e-05,
 }
