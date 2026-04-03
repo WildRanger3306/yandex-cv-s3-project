@@ -22,6 +22,9 @@ np.random.seed(42)
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
+# Путь к сохранённой LoRA-модели из phase-2
+final_save_path = "models/cheburashka_lora_final"
+
 # Создадим снова пайплайн генерации и загрузим обученную модель.
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",

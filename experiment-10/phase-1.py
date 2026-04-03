@@ -40,8 +40,8 @@ for i in range(3):
         prompt, 
         negative_prompt=negative_prompt,
         num_inference_steps=30,
-        height=1024,
-        width=1024,
+        height=512,   # SD 1.5 обучена на 512x512 — это нативное разрешение
+        width=512,    # при 1024x1024 модель тайлит и даёт несколько объектов
         guidance_scale=7.5
     ).images[0]
 
