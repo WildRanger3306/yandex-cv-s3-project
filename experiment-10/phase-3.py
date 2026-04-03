@@ -1,18 +1,9 @@
 import os
 import gc
 
-from diffusers import StableDiffusionPipeline, DDPMScheduler, AutoencoderKL, UNet2DConditionModel
-from diffusers.optimization import get_scheduler
-from peft import LoraConfig, PeftModel, get_peft_model_state_dict
+from diffusers import StableDiffusionPipeline
 
 import torch
-import torch.nn.functional as F
-from torch.utils.data import DataLoader
-
-from tqdm import tqdm
-
-from utilits import Visualisator, CheburashkaDataset, save_checkpoint, draw_loss_graph
-import numpy as np
 
 PATH_TO_IMAGES = 'data'
 PATH_TO_ARTIFACTS = 'artifacts'
@@ -48,8 +39,10 @@ with torch.no_grad():
         width=512,
         guidance_scale=7.5
     ).images[0]
-image
-
+# Тестовая генерация — сохраняем чтобы проверить результат визуально
+test_folder = os.path.join(PATH_TO_ARTIFACTS, 'test_inference')
+os.makedirs(test_folder, exist_ok=True)
+image.save(os.path.join(test_folder, 'cheburashka_test.png'))
 
 del image
 gc.collect()
@@ -75,8 +68,8 @@ for i, prompt in enumerate(prompts):
             prompt, 
             negative_prompt=negative_prompt,
             num_inference_steps=30,
-            height=1024,
-            width=1024,
+            height=512,   # SD 1.5 нативное разрешение — 1024 даёт тайлинг
+            width=512,
             guidance_scale=7.5
         ).images[0]
 
