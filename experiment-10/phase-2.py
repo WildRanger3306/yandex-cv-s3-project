@@ -25,11 +25,11 @@ device = "cuda" if torch.cuda.is_available() else "cpu"
 # Загрузим модель и настроим LoRA
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
-    torch_dtype=torch.float32
+    torch_dtype=torch.float16
 ).to(device)
 
 lora_config = LoraConfig(
-    r=128, 
+    r=16, 
     target_modules=["to_k", "to_q", "to_v", "to_out.0"], 
     init_lora_weights="gaussian",
     lora_dropout=0.1
@@ -69,8 +69,8 @@ train_dataloader = DataLoader(
 
 # Загрузим полученные ранее эмбединги
 embeddings_data = torch.load("embeddings/cheburashka_plushie_embeddings.pt")
-prompt_embeds = embeddings_data["prompt_embeds"].to("cuda", dtype=torch.float32)
-negative_prompt_embeds = embeddings_data["negative_prompt_embeds"].to("cuda", dtype=torch.float32)
+prompt_embeds = embeddings_data["prompt_embeds"].to("cuda", dtype=torch.float16)
+negative_prompt_embeds = embeddings_data["negative_prompt_embeds"].to("cuda", dtype=torch.float16)
 
 # Настроим оптимизатор, планировщик скорости обучения и планировщик диффузии.
 optimizer = torch.optim.AdamW(
@@ -117,7 +117,7 @@ while global_step < max_train_steps:
         # Кодирует изображения в латентное пространство меньшей размерности.
         # Это ускоряет обучение и уменьшает потребление памяти.
         with torch.no_grad():
-            latents = pipe.vae.encode(batch.to("cuda")).latent_dist.sample()
+            latents = pipe.vae.encode(batch.to("cuda", dtype=torch.float16)).latent_dist.sample()
             latents = latents * pipe.vae.config.scaling_factor
         
         # Семплирование диффузионного времени
