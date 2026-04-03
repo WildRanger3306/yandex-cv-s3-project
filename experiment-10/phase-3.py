@@ -4,6 +4,7 @@ import gc
 from diffusers import StableDiffusionPipeline
 
 import torch
+import numpy as np
 
 PATH_TO_IMAGES = 'data'
 PATH_TO_ARTIFACTS = 'artifacts'
