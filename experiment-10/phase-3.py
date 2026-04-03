@@ -14,6 +14,14 @@ from tqdm import tqdm
 from utilits import Visualisator, CheburashkaDataset, save_checkpoint, draw_loss_graph
 import numpy as np
 
+PATH_TO_IMAGES = 'data'
+PATH_TO_ARTIFACTS = 'artifacts'
+
+torch.manual_seed(42)
+np.random.seed(42)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+
 # Создадим снова пайплайн генерации и загрузим обученную модель.
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",

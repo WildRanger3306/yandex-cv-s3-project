@@ -14,6 +14,14 @@ from tqdm import tqdm
 from utilits import Visualisator, CheburashkaDataset, save_checkpoint, draw_loss_graph
 import numpy as np
 
+PATH_TO_IMAGES = 'data'
+PATH_TO_ARTIFACTS = 'artifacts'
+
+torch.manual_seed(42)
+np.random.seed(42)
+device = "cuda" if torch.cuda.is_available() else "cpu"
+
+
 # Загрузим модель и настроим LoRA
 pipe = StableDiffusionPipeline.from_pretrained(
     "runwayml/stable-diffusion-v1-5",
@@ -211,66 +219,3 @@ del progress_bar
 gc.collect()
 torch.cuda.empty_cache() 
 torch.cuda.synchronize()
-
-
-pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5",
-    torch_dtype=torch.float32
-).to("cuda")
-
-pipe.load_lora_weights(final_save_path)
-
-pipe.safety_checker = None
-pipe.requires_safety_checker = False
-
-
-prompt = "<cheburashka> plushie"
-negative_prompt = "low quality, blurry"
-with torch.no_grad():
-    image = pipe(
-        prompt, 
-        negative_prompt=negative_prompt,
-        num_inference_steps=30,
-        height=512,
-        width=512,
-        guidance_scale=7.5
-    ).images[0]
-image
-
-
-del image
-gc.collect()
-torch.cuda.empty_cache() 
-torch.cuda.synchronize()
-
-
-prompts = [
-    "<cheburashka> with the Eiffel Tower in the background",
-    "<cheburashka> plushie",
-    "<cheburashka> in sketch style",
-    "<cheburashka> riding a bicycle"
-]
-
-
-negative_prompt = "low quality, blurry"
-
-for i, prompt in enumerate(prompts):
-    folder_to_save = os.path.join(PATH_TO_ARTIFACTS, 'after_train', f'prompt_{i}')
-    os.makedirs(folder_to_save, exist_ok=True)
-    for n in range(3):
-        image = pipe(
-            prompt, 
-            negative_prompt=negative_prompt,
-            num_inference_steps=30,
-            height=1024,
-            width=1024,
-            guidance_scale=7.5
-        ).images[0]
-
-        path_to_save = os.path.join(folder_to_save, f'cheburashka_{n}.png')
-        image.save(path_to_save)
-
-        del image
-        gc.collect()
-        torch.cuda.empty_cache() 
-        torch.cuda.synchronize()
