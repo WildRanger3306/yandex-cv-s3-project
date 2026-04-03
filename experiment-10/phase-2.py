@@ -92,8 +92,6 @@ noise_scheduler = DDPMScheduler.from_pretrained(
     subfolder="scheduler"
 )
 
-scaler = torch.cuda.amp.GradScaler()
-
 # Помещаем VAE и текстовый энкодор на ГПУ, переводим их в режим оценки, т.к. они не учатся.
 
 pipe.vae = pipe.vae.to("cuda")
